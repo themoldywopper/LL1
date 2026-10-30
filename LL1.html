@@ -150,6 +150,7 @@ input[type=color]{width:100%;height:36px;padding:2px;background:var(--raise);bor
 /* output */
 #proj{position:fixed;inset:0;background:#000;z-index:50;cursor:none}
 #proj.awake{cursor:default}
+#proj.out,#proj.out.awake{cursor:none}
 #projGL,#projCv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .floatUI{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));display:flex;gap:8px;opacity:0;transition:opacity .4s;z-index:2}
 #proj.awake .floatUI{opacity:1}
@@ -225,7 +226,7 @@ input[type=color]{width:100%;height:36px;padding:2px;background:var(--raise);bor
       <button class="icon" id="redoBtn" title="Redo" aria-label="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
       <button class="tog hideS" id="blackBtn" aria-pressed="false" title="Blackout (B)">Blackout</button>
       <button class="pill hideS" id="outPill" title="Projector connection"><i></i><span>No output</span></button>
-      <button class="primary" id="goProj" title="Project (P)">Project <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg></button>
+      <button class="primary" id="goProj" title="Open the projector view in a new tab (P)">Projector view <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg></button>
     </div>
   </header>
 
@@ -575,14 +576,14 @@ function syncUndo(){ const u=$('#undoBtn'), r=$('#redoBtn'); if(u){ u.disabled=h
 /* ---------- output window link ---------- */
 let chan=null; try{ chan=new BroadcastChannel('beamwork-output'); }catch(e){}
 let dirty=true, lastPeer=0;
-function touch(){ dirty=true; }
+function touch(){ dirty=true; if(document.hidden&&!OUT) setTimeout(()=>{ if(dirty){ dirty=false; sendState(); } },30); }
 function sendState(){ if(!chan||OUT) return; try{ chan.postMessage({t:'state',P:strip(P),mode,sel,bend:bendMode}); }catch(e){} }
 let REMOTE={dim:1,lvl:0};
 if(chan) chan.onmessage=e=>{ const m=e.data||{};
   if(OUT){ if(m.t==='state'){ const keep=P; P=normalize(m.P); P.shapes.forEach(s=>{ const o=keep.shapes.find(k=>k.id===s.id); if(o&&o.media&&s.media&&s.media.kind==='video'&&!s.media.src) s.media=o.media; }); mode=m.mode; sel=m.sel; bendMode=m.bend; lastPeer=performance.now(); }
     else if(m.t==='live'){ REMOTE.dim=m.dim; REMOTE.lvl=m.lvl; lastPeer=performance.now(); }
     else if(m.t==='media'){ const s=P.shapes.find(x=>x.id===m.id); if(s) s.media=m.media; }
-    else if(m.t==='bye'){ outHint('Editor closed. This window keeps the last look.'); } }
+    }
   else{ if(m.t==='hello'){ lastPeer=performance.now(); dirty=true; P.shapes.forEach(s=>{ if(s.media&&s.media.kind==='video'&&s.media.src) chan.postMessage({t:'media',id:s.id,media:s.media}); }); }
     else if(m.t==='size'){ lastPeer=performance.now(); if(Math.abs((P.outAR||0)-m.ar)>.002||P.outSize!==m.size){ P.outAR=m.ar; P.outSize=m.size; save(); sizeStage(); } }
     else if(m.t==='ping'){ lastPeer=performance.now(); } } };
@@ -892,7 +893,7 @@ function frame(now){
 }
 let pillState=null;
 function syncPill(now){ const on=now-lastPeer<3500, st=projOpen?'tab':on?'win':'off'; if(st===pillState) return; pillState=st; const p=$('#outPill');
-  p.classList.toggle('on',st!=='off'); p.querySelector('span').textContent=st==='win'?'Output window live':st==='tab'?'Projecting':'No output'; }
+  p.classList.toggle('on',st!=='off'); p.querySelector('span').textContent=st==='win'?'Projector live':st==='tab'?'Previewing here':(window.screen&&screen.isExtended?'Second screen found':'One screen only'); }
 
 /* ---------- pointer editing ---------- */
 function snapPt(x,y,F,ex){ if(!P.ui.snap) return [x,y]; const R=12/F.w; let best=null, bd=12; const cand=[[0,0],[1,0],[1,1],[0,1],[.5,0],[.5,1],[0,.5],[1,.5]];
@@ -1252,25 +1253,29 @@ function openModal(html){ $('#mbox').innerHTML=html; $('#modal').hidden=false; }
 function closeModal(){ $('#modal').hidden=true; $('#mbox').onclick=null; }
 $('#modal').addEventListener('click',e=>{ if(e.target.id==='modal'||e.target.closest('[data-close]')) closeModal(); });
 let toastT=0; function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2600); }
-function helpHTML(){ return `<h4>iPad or iPhone with AirPlay</h4><ol><li>Open Control Center, tap <b>Screen Mirroring</b> and pick your Apple TV or AirPlay projector.</li><li>Tap <b>Project here</b>. The screen goes black except your shapes.</li><li>Switch to <b>Mapping</b> with the button in the top-right corner of the projection and drag corners while you look at the wall.</li></ol>
-  <h4>Laptop with a second screen or HDMI</h4><ol><li>Set the projector as an extended display (<kbd>Win</kbd>+<kbd>P</kbd> → Extend, or Displays settings on a Mac).</li><li>Tap <b>Open output window</b>, drag it onto the projector and double-click it to go fullscreen.</li><li>Keep editing here. The projector updates live and the controls stay on your laptop.</li></ol>
+function helpHTML(){ return `<h4>iPad or iPhone with AirPlay</h4><ol><li>Open Control Center, tap <b>Screen Mirroring</b> and pick your Apple TV or AirPlay projector.</li><li>Tap <b>Project here</b>. The screen goes black except your shapes.</li><li>Use the Mapping and Play buttons on this page to switch modes while you look at the wall.</li></ol>
+  <h4>PC or laptop with the projector on HDMI</h4><ol><li>Connect the HDMI cable and set the projector as an extended display (<kbd>Win</kbd>+<kbd>P</kbd> → Extend, or Displays on a Mac).</li><li>Tap <b>Projector view</b>. Drag the new tab out into its own window, move it onto the projector screen and click it once to fill the screen.</li><li>Keep editing on your main screen. The projector updates live.</li></ol>
   <h4>Chromecast or smart projector</h4><ol><li>In Chrome, open ⋮ → <b>Cast</b> → <b>Cast tab</b> and pick the projector.</li><li>Tap <b>Project here</b>.</li></ol>
   <h4>Before you map</h4><ol><li>Turn off the projector's auto keystone and set keystone to zero.</li><li>Focus the lens, then don't move the projector after mapping.</li><li>Leave the frame on <b>Match projector</b> so positions line up exactly.</li></ol>`; }
-function openOutputMenu(){
-  openModal(`<h3>Send to the projector</h3>
-  <button class="opt" id="optHere"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 22h8M12 18v4"/></svg><div><b>Project here</b><span>Fills this screen. Use it when you mirror or cast this device to the projector.</span></div></button>
-  <button class="opt" id="optWin"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="12" height="9" rx="1.5"/><rect x="10" y="12" width="12" height="9" rx="1.5"/></svg><div><b>Open output window</b><span>For a projector set up as a second screen. Controls stay here, the window shows only the lit shapes.</span></div></button>
-  ${helpHTML()}<button class="btn" data-close>Close</button>`);
-  $('#optHere').onclick=()=>{ closeModal(); openProj(true); };
-  $('#optWin').onclick=()=>{ let w=null; try{ w=window.open(location.href.split('#')[0]+'#output','beamwork-output','popup,width=960,height=540'); }catch(e){}
-    closeModal(); if(!w) toast('This page can\'t open windows here. Open the app from its own web address, or use Project here.'); else toast('Output window opened. Drag it to the projector and double-click it.'); };
+function openOutputWin(){
+  const url=location.href.split('#')[0]+'#output'; let w=null;
+  try{ w=window.open(url,'beamwork-projector'); }catch(e){}
+  if(!w){ toast('Your browser blocked the new tab. Allow pop-ups for this site, then tap Projector view again.'); return; }
+  toast('Projector view opened. Move that tab onto the projector screen and click it once to fill it.');
 }
-
+function openOutputMenu(){
+  openModal(`<h3>Projector output</h3>
+  <button class="opt" id="optWin"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="12" height="9" rx="1.5"/><rect x="10" y="12" width="12" height="9" rx="1.5"/></svg><div><b>Projector view</b><span>Opens a new tab with only the projection. Put it on the projector screen and keep this tab for controls.</span></div></button>
+  <button class="opt" id="optHere"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 22h8M12 18v4"/></svg><div><b>Preview on this screen</b><span>Fills this screen with the output. Use it to test without a projector.</span></div></button>
+  ${helpHTML()}<button class="btn" data-close>Close</button>`);
+  $('#optWin').onclick=()=>{ closeModal(); openOutputWin(); };
+  $('#optHere').onclick=()=>{ closeModal(); openProj(true); };
+}
 /* ---------- top bar + keys ---------- */
 if(!OUT){
   $('#undoBtn').onclick=undo; $('#redoBtn').onclick=redo;
-  $('#goProj').onclick=()=>openProj(true); $('#outPill').onclick=openOutputMenu;
-  $('#goProj').addEventListener('contextmenu',e=>{ e.preventDefault(); openOutputMenu(); });
+  $('#goProj').onclick=openOutputWin; $('#outPill').onclick=openOutputMenu;
+  $('#goProj').addEventListener('contextmenu',e=>{ e.preventDefault(); openProj(true); });
   $('#blackBtn').onclick=()=>{ P.blackout=!P.blackout; syncBlack(); commit(); };
   $('#homeBtn').onclick=openHome; $('#homeClose').onclick=closeHome; $('#homeHelp').onclick=()=>openModal(`<h3>Connecting a projector</h3>${helpHTML()}<button class="primary" data-close>Got it</button>`);
   $('#projName').onclick=()=>renameDialog(P.name,n=>{ P.name=n; $('#projName').textContent=n; commit(); });
@@ -1286,7 +1291,7 @@ document.addEventListener('keydown',e=>{
   if(mod&&k.toLowerCase()==='d'){ e.preventDefault(); duplicate(); return; }
   if(k==='Escape'){ if(projOpen) closeProj(); else if(ed.drawing){ ed.drawing=null; renderBar(); } else if(sel){ sel=null; selV=-1; refreshSel(); } return; }
   const kl=k.toLowerCase();
-  if(kl==='p'&&!projOpen){ openProj(true); return; }
+  if(kl==='p'&&!projOpen){ openOutputWin(); return; }
   if(kl==='m'){ setMode('map'); return; } if(kl==='l'){ setMode('play'); return; }
   if(kl==='e'&&projOpen){ setMode(mode==='map'?'play':'map'); return; }
   if(kl==='b'){ P.blackout=!P.blackout; syncBlack(); commit(); return; }
@@ -1305,9 +1310,9 @@ setInterval(()=>{ const b=document.getElementById('lvlBar'); if(b) b.style.width
 
 /* ---------- boot ---------- */
 if(OUT){
-  document.title='Beamwork Output'; $('#app').hidden=true; proj.hidden=false; proj.classList.add('out'); sizeProj();
-  outHint('Drag this window onto the projector, then double-click for fullscreen.');
-  proj.addEventListener('dblclick',()=>{ try{ document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen(); }catch(e){} });
+  document.title='Beamwork Projector'; $('#app').hidden=true; proj.hidden=false; proj.classList.add('out'); $$('#proj .floatUI').forEach(e=>e.remove()); sizeProj();
+  const fs=()=>{ try{ if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{}); }catch(e){} };
+  proj.addEventListener('click',fs); document.addEventListener('keydown',e=>{ if(e.key==='f'||e.key==='F'||e.key==='Enter') fs(); });
   try{ navigator.wakeLock&&navigator.wakeLock.request('screen').catch(()=>{}); }catch(e){}
   if(!GP) $('#noGL').hidden=false;
   chan&&chan.postMessage({t:'hello'});
