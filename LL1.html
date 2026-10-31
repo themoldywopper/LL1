@@ -53,9 +53,11 @@ button:disabled{opacity:.38;cursor:not-allowed}
 .pill.on{color:var(--ok);border-color:rgba(74,222,128,.4)}
 .pill.on i{background:var(--ok);box-shadow:0 0 8px var(--ok)}
 
-.work{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 330px}
+.work{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 290px}
+.nopanel .work{grid-template-columns:minmax(0,1fr)}
+.nopanel .panel{display:none}
 .center{display:flex;flex-direction:column;min-width:0;min-height:0;background:#07080a}
-#stageWrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:26px 18px 18px;position:relative;overflow:hidden}
+#stageWrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:20px 10px 10px;position:relative;overflow:hidden}
 #stageFrame{position:relative;background:#000;box-shadow:0 0 0 1px #2a2f3a,0 20px 60px rgba(0,0,0,.6)}
 #stageFrame canvas,#refImg{position:absolute;inset:0;width:100%;height:100%}
 #refImg{object-fit:cover;pointer-events:none;max-width:none}
@@ -71,7 +73,7 @@ button:disabled{opacity:.38;cursor:not-allowed}
 .zoom button:hover{background:var(--raise)}
 .zoom output{font-family:var(--mono);font-size:11px;color:var(--muted);align-self:center;min-width:38px;text-align:center}
 
-.bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-block:9px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-top:1px solid var(--line);background:var(--panel);min-height:56px;font-size:13px;color:var(--muted)}
+.bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-block:9px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-top:1px solid var(--line);background:var(--panel);min-height:48px;font-size:13px;color:var(--muted)}
 .bar b{color:var(--fg);font-weight:600}
 .bar .sp{flex:1}
 .addBig{font-size:20px;line-height:1;width:38px;height:38px;padding:0;border-radius:50%}
@@ -162,6 +164,9 @@ input[type=color]{width:100%;height:36px;padding:2px;background:var(--raise);bor
 #proj .seg{background:rgba(10,10,10,.6)}
 #outHint{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);background:rgba(20,20,20,.8);color:#ddd;padding:10px 16px;border-radius:8px;font-size:14px;text-align:center;transition:opacity .8s;max-width:90%}
 
+#pairBox{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#000;color:#fff;text-align:center;z-index:3;padding:24px}
+#pairBox p{margin:0;font-size:clamp(15px,2.4vw,26px);color:#aaa}
+#pairCode{font-family:var(--mono);font-size:clamp(72px,18vw,240px);font-weight:600;letter-spacing:.12em;color:var(--accent);line-height:1}
 /* home */
 #home{position:fixed;inset:0;z-index:60;background:var(--bg);overflow-y:auto}
 .homeIn{max-width:1100px;margin:0 auto;padding-block:28px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:22px}
@@ -225,6 +230,7 @@ input[type=color]{width:100%;height:36px;padding:2px;background:var(--raise);bor
       <button class="icon" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
       <button class="icon" id="redoBtn" title="Redo" aria-label="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
       <button class="tog hideS" id="blackBtn" aria-pressed="false" title="Blackout (B)">Blackout</button>
+      <button class="tog hideS" id="panelBtn" aria-pressed="false" title="Show or hide the side panel for a bigger stage">Panel</button>
       <button class="tog hideS" id="shareBtn" title="Share this project with a link">Share</button>
       <span class="pill hideS" id="cloudPill" hidden><i></i><span>Synced</span></span>
       <button class="pill hideS" id="outPill" title="Projector connection"><i></i><span>No output</span></button>
@@ -254,6 +260,7 @@ input[type=color]{width:100%;height:36px;padding:2px;background:var(--raise);bor
   <div class="floatUI fl"><button id="backBtn" aria-label="Back to editor" title="Back (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7"/></svg></button></div>
   <div class="floatUI fr"><div class="seg" id="projSeg"><button data-mode="map" aria-selected="false"><i></i>MAPPING</button><button data-mode="play" aria-selected="true"><i></i>PLAY</button></div></div>
   <div id="outHint" hidden></div>
+  <div id="pairBox" hidden><p id="pairLbl">Projector code</p><div id="pairCode"></div><p id="pairNote"></p></div>
 </section>
 
 <section id="home" hidden>
@@ -273,7 +280,7 @@ input[type=color]{width:100%;height:36px;padding:2px;background:var(--raise);bor
 <div id="noGL" hidden>This browser can't use the graphics card, so surfaces can't be drawn. Try Chrome, Edge or Safari.</div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js";
-import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-database.js";
+import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-database.js";
 const app = initializeApp({
   apiKey: "AIzaSyCL4faMngsjmAH_w2tWkEzPRcTAMhwkeZQ",
   authDomain: "beamwork-e3027.firebaseapp.com",
@@ -283,7 +290,7 @@ const app = initializeApp({
   messagingSenderId: "294415393382",
   appId: "1:294415393382:web:ec39c1d870eb8d8c2843a7"
 });
-window.BW_FB = { db: getDatabase(app), ref, set, onValue };
+window.BW_FB = { db: getDatabase(app), ref, set, get, onValue };
 window.dispatchEvent(new Event('bwcloud'));
 </script>
 <script>
@@ -441,6 +448,7 @@ Object.assign(FX,{
       for(let k=0;k<n;k++){ const u=(k+.5)/n, x=u*w, y=y0+sag*4*u*(1-u)+rb*1.4, col=rgb(cols[(k+r)%4]), tw=.3+.7*(.5+.5*Math.sin(t*3*(.5+hash(k,r))+hash(r,k)*6));
         c.fillStyle=css(col,.22*tw); c.beginPath(); c.arc(x,y,rb*2.6,0,TAU); c.fill(); c.fillStyle=css(mix(col,WHITE,.25*tw),tw); c.beginPath(); c.ellipse(x,y,rb*.75,rb,0,0,TAU); c.fill(); } } },
 });
+FX.mapfill=(c,w,h)=>{ c.fillStyle='rgba(255,255,255,0.9)'; c.fillRect(0,0,w,h); };
 const FX_LABEL={solid:'Solid color',gradient:'Gradient flow',rainbow:'Rainbow',cycle:'Color cycle',pulse:'Two-color pulse',breathe:'Breathe',strobe:'Strobe',wipe:'Color wipe',stripes:'Moving stripes',scanner:'Scanner bar',checker:'Checker flip',ripples:'Ripples',pinwheel:'Pinwheel',radar:'Radar sweep',tunnel:'Tunnel',waves:'Ocean waves',aurora:'Aurora',lava:'Lava glow',fire:'Fire',plasma:'Plasma',noise:'TV static',starfield:'Starfield',sparkle:'Sparkles',snow:'Snowfall',eyes:'Glowing eyes',lightning:'Lightning',twinkle:'String lights',matrix:'Matrix rain',equalizer:'Equalizer',bricks:'Brick facade',chase:'Edge chase lights',glitch:'Glitch',text:'Text',media:'Image or video',none:'Outline only',empty:'Empty'};
 function drawMedia(c,w,h,el,s,t){
   const ok=el&&(el.tagName==='VIDEO'?el.readyState>=2:el.complete&&el.naturalWidth);
@@ -579,15 +587,54 @@ function cloudConnect(){
   },()=>cloudStatus(false));
   cloudStatus(true);
 }
+function ensureRoom(){
+  if(!CLOUD.room){ CLOUD.room=newRoomId(); const u=new URL(location.href); u.searchParams.set('room',CLOUD.room); history.replaceState(null,'',u.toString()); cloudConnect(); cloudSend(); }
+  return CLOUD.room;
+}
+/* projector side: show a 4-digit code and wait for the phone to type it */
+function pairStart(){
+  const F=window.BW_FB, code=String(1000+Math.floor(Math.random()*9000)), box=$('#pairBox');
+  box.hidden=false; $('#pairCode').textContent=code; $('#pairNote').textContent='On your phone: Share → Connect projector, then type this code';
+  const r=F.ref(F.db,'pair/'+code);
+  F.set(r,{t:Date.now()}).catch(()=>{ $('#pairNote').textContent='Could not reach the cloud. Check the internet and reopen this page.'; });
+  CLOUD.pairOff=F.onValue(F.ref(F.db,'pair/'+code+'/room'),snap=>{
+    const v=snap.val(); if(!v) return;
+    if(CLOUD.pairOff){ CLOUD.pairOff(); CLOUD.pairOff=null; }
+    CLOUD.room=v; box.hidden=true; F.set(r,null).catch(()=>{}); cloudConnect();
+  });
+}
+function onCloudReady(){ if(OUT&&!CLOUD.room){ if(!CLOUD.pairOff&&!window._paired){ window._paired=true; pairStart(); } } else cloudConnect(); }
+/* phone side: type the projector's code */
+function connectProjector(){
+  if(!window.BW_FB){ toast('Cloud sync is still loading. Check your connection and try again.'); return; }
+  openModal(`<h3>Connect the projector</h3><p>Type the 4-digit code shown on the projector.</p>
+  <input id="pCode" inputmode="numeric" maxlength="4" aria-label="Projector code" style="font-size:28px;letter-spacing:.3em;text-align:center">
+  <p class="note" id="pMsg"></p><div class="btnRow"><button class="btn" data-close>Cancel</button><button class="primary" id="pGo">Connect</button></div>`);
+  const i=$('#pCode'); i.focus();
+  const go=async()=>{
+    const code=i.value.trim(); if(!/^\d{4}$/.test(code)){ $('#pMsg').textContent='Enter the 4 digits on the projector.'; return; }
+    $('#pMsg').textContent='Connecting…';
+    try{
+      const F=window.BW_FB, room=ensureRoom(), snap=await F.get(F.ref(F.db,'pair/'+code));
+      const v=snap.val();
+      if(!v){ $('#pMsg').textContent='No projector is waiting with that code. Check the code on the projector.'; return; }
+      if(Date.now()-(v.t||0)>20*60*1000){ $('#pMsg').textContent='That code has expired. Restart the projector page to get a new one.'; return; }
+      await F.set(F.ref(F.db,'pair/'+code+'/room'),room);
+      closeModal(); toast('Projector connected');
+    }catch(e){ $('#pMsg').textContent='Could not connect. Check the internet and try again.'; }
+  };
+  $('#pGo').onclick=go; i.onkeydown=e=>{ if(e.key==='Enter') go(); };
+}
 function shareRoom(){
   if(!window.BW_FB){ toast('Cloud sync is still loading. Check your connection and try again.'); return; }
-  if(!CLOUD.room){ CLOUD.room=newRoomId(); const u=new URL(location.href); u.searchParams.set('room',CLOUD.room); history.replaceState(null,'',u.toString()); cloudConnect(); cloudSend(); }
+  ensureRoom();
   const base=location.href.split('#')[0].split('?')[0], link=`${base}?room=${CLOUD.room}`, out=`${link}#output`;
   openModal(`<h3>Share this project</h3><p>Anyone with a link can view and change it. Only share it with people you trust.</p>
   <h4>Editor link (phone or laptop)</h4><input id="lnk1" readonly value="${link}">
   <h4>Projector link (projector device)</h4><input id="lnk2" readonly value="${out}">
   <p class="note">On the projector device, open the projector link and click once to fill the screen. Images sync up to a few megabytes. Videos stay on the device they were added on.</p>
-  <div class="btnRow"><button class="btn" id="cpy">Copy editor link</button><button class="primary" data-close>Done</button></div>`);
+  <div class="btnRow"><button class="btn" id="pjBtn">Connect projector with code</button><button class="btn" id="cpy">Copy editor link</button><button class="primary" data-close>Done</button></div>`);
+  $('#pjBtn').onclick=connectProjector;
   $('#cpy').onclick=()=>{ const done=()=>toast('Link copied'); if(navigator.clipboard) navigator.clipboard.writeText(link).then(done).catch(()=>{ $('#lnk1').select(); toast('Select the link and copy it'); }); else { $('#lnk1').select(); toast('Select the link and copy it'); } };
 }
 
@@ -713,15 +760,16 @@ function mediaEl(s,r){
 }
 function renderFx(s,r,tw,th,dt){
   const st=s.style; if(r.fxName!==st.effect){ r.st={}; r.fxName=st.effect; r.key=null; }
+  const eff=((st.effect==='empty'||st.effect==='none')&&mode==='map')?'mapfill':st.effect;
   let key=null;
-  if(st.effect==='solid'||st.effect==='none'||st.effect==='empty') key=st.effect+st.a+tw+'x'+th;
+  if(eff==='solid'||eff==='none'||eff==='empty'||eff==='mapfill') key=eff+st.a+tw+'x'+th;
   else if(st.effect==='text'&&st.speed===0) key='t'+st.text+st.a+tw+'x'+th;
   else if(st.effect==='media'){ const el=mediaEl(s,r); if(el&&el.tagName==='IMG'&&el.complete&&el.naturalWidth) key='img'+r.mediaSrc.length+st.fit+tw+'x'+th; }
   if(key&&key===r.key&&r.src) return r.src;
   const f=r.fx; if(f.width!==tw||f.height!==th){ f.width=tw; f.height=th; }
   const c=f.getContext('2d'); c.save(); let ret=null;
   if(st.effect==='media') drawMedia(c,tw,th,mediaEl(s,r),st,r.time);
-  else ret=(FX[st.effect]||FX.solid)(c,tw,th,r.time,st,r.st,dt);
+  else ret=(FX[eff]||FX.solid)(c,tw,th,r.time,st,r.st,dt);
   c.restore(); r.key=key; r.src=ret||f; r.ver++; return r.src;
 }
 
@@ -786,7 +834,7 @@ function renderGL(R,F,black,dim,lvl,dimAll){
   const draw=(v,n)=>{ gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(v),gl.STREAM_DRAW); gl.drawArrays(gl.TRIANGLES,0,n); };
   const seen=new Set();
   for(const s of P.shapes){ seen.add(s.id); if(!s.visible) continue;
-    const st=s.style; if(st.effect==='none'||st.effect==='empty') continue;
+    const st=s.style; if(mode!=='map'&&(st.effect==='none'||st.effect==='empty')) continue;
     const alpha=shapeAlpha(s,dim,lvl)*(dimAll||1); if(alpha<=0) continue;
     const r=rtFor(s), [tw,th,ew,eh]=texSize(s,F);
     const src=renderFx(s,r,tw,th,r.dt||0); const t=upload(R,s.id,src,r.ver);
@@ -1326,7 +1374,7 @@ function openOutputMenu(){
 }
 /* ---------- top bar + keys ---------- */
 if(!OUT){
-  $('#undoBtn').onclick=undo; $('#redoBtn').onclick=redo; $('#shareBtn').onclick=shareRoom;
+  $('#undoBtn').onclick=undo; $('#redoBtn').onclick=redo; $('#shareBtn').onclick=shareRoom; $('#panelBtn').onclick=()=>{ const on=document.getElementById('app').classList.toggle('nopanel'); $('#panelBtn').setAttribute('aria-pressed',on); requestAnimationFrame(sizeStage); };
   $('#goProj').onclick=openOutputWin; $('#outPill').onclick=openOutputMenu;
   $('#goProj').addEventListener('contextmenu',e=>{ e.preventDefault(); openProj(true); });
   $('#blackBtn').onclick=()=>{ P.blackout=!P.blackout; syncBlack(); commit(); };
@@ -1374,7 +1422,7 @@ if(OUT){
   $('#app').classList.toggle('mode-map',mode==='map'); syncSeg(); resetHist(); refreshAll();
   if(location.hash==='#projection') openProj(false);
 }
-addEventListener('bwcloud',cloudConnect); if(window.BW_FB) cloudConnect();
+addEventListener('bwcloud',onCloudReady); if(window.BW_FB) onCloudReady();
 requestAnimationFrame(frame);
 })();
 </script>
