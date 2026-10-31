@@ -225,6 +225,8 @@ input[type=color]{width:100%;height:36px;padding:2px;background:var(--raise);bor
       <button class="icon" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
       <button class="icon" id="redoBtn" title="Redo" aria-label="Redo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
       <button class="tog hideS" id="blackBtn" aria-pressed="false" title="Blackout (B)">Blackout</button>
+      <button class="tog hideS" id="shareBtn" title="Share this project with a link">Share</button>
+      <span class="pill hideS" id="cloudPill" hidden><i></i><span>Synced</span></span>
       <button class="pill hideS" id="outPill" title="Projector connection"><i></i><span>No output</span></button>
       <button class="primary" id="goProj" title="Open the projector view in a new tab (P)">Projector view <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg></button>
     </div>
@@ -269,6 +271,21 @@ input[type=color]{width:100%;height:36px;padding:2px;background:var(--raise);bor
 <div id="modal" hidden><div class="mbox" id="mbox"></div></div>
 <div id="toast" role="status"></div>
 <div id="noGL" hidden>This browser can't use the graphics card, so surfaces can't be drawn. Try Chrome, Edge or Safari.</div>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js";
+import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-database.js";
+const app = initializeApp({
+  apiKey: "AIzaSyCL4faMngsjmAH_w2tWkEzPRcTAMhwkeZQ",
+  authDomain: "beamwork-e3027.firebaseapp.com",
+  databaseURL: "https://beamwork-e3027-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "beamwork-e3027",
+  storageBucket: "beamwork-e3027.firebasestorage.app",
+  messagingSenderId: "294415393382",
+  appId: "1:294415393382:web:ec39c1d870eb8d8c2843a7"
+});
+window.BW_FB = { db: getDatabase(app), ref, set, onValue };
+window.dispatchEvent(new Event('bwcloud'));
+</script>
 <script>
 (()=>{
 'use strict';
@@ -538,6 +555,42 @@ function normalize(p){
     return {id:s.id||'s'+uid(),name:s.name||'Shape',kind,pts:s.pts,bends:Array.isArray(s.bends)&&s.bends.length===s.pts.length?s.bends:s.pts.map(()=>null),group:s.group||null,visible:s.visible!==false,locked:!!s.locked,preset:s.preset||null,style:st,media:s.media||null}; });
   return p;
 }
+/* ---------- cloud room sync ---------- */
+const CLOUD={room:new URLSearchParams(location.search).get('room'),off:null,lastSent:null,applying:false,dev:Math.random().toString(36).slice(2,10)};
+function newRoomId(){ const a=new Uint8Array(16); crypto.getRandomValues(a); return Array.from(a,b=>'abcdefghijklmnopqrstuvwxyz0123456789'[b%36]).join(''); }
+function cloudStatus(ok){ const p=document.getElementById('cloudPill'); if(!p) return; p.hidden=!CLOUD.room; p.classList.toggle('on',!!ok); p.querySelector('span').textContent=ok?'Synced':'Offline'; }
+function cloudSend(){
+  if(!window.BW_FB||!CLOUD.room||OUT||CLOUD.applying||!P) return;
+  const json=JSON.stringify(strip(P)); if(json===CLOUD.lastSent) return; CLOUD.lastSent=json;
+  const F=window.BW_FB; F.set(F.ref(F.db,'rooms/'+CLOUD.room+'/state'),{json,from:CLOUD.dev,t:Date.now()}).catch(()=>cloudStatus(false));
+}
+function cloudConnect(){
+  if(!window.BW_FB||!CLOUD.room) return;
+  const F=window.BW_FB; if(CLOUD.off) CLOUD.off();
+  CLOUD.off=F.onValue(F.ref(F.db,'rooms/'+CLOUD.room+'/state'),snap=>{
+    const v=snap.val(); cloudStatus(true);
+    if(!v||!v.json){ cloudSend(); return; }
+    if(v.from===CLOUD.dev||v.json===CLOUD.lastSent) return;
+    CLOUD.applying=true;
+    try{
+      const next=normalize(JSON.parse(v.json)); P=next; CLOUD.lastSent=JSON.stringify(strip(P));
+      if(!OUT){ if(!sh()) sel=null; selV=-1; resetHist(); refreshAll(); toast('Updated from another device'); }
+    }catch(e){} finally{ CLOUD.applying=false; }
+  },()=>cloudStatus(false));
+  cloudStatus(true);
+}
+function shareRoom(){
+  if(!window.BW_FB){ toast('Cloud sync is still loading. Check your connection and try again.'); return; }
+  if(!CLOUD.room){ CLOUD.room=newRoomId(); const u=new URL(location.href); u.searchParams.set('room',CLOUD.room); history.replaceState(null,'',u.toString()); cloudConnect(); cloudSend(); }
+  const base=location.href.split('#')[0].split('?')[0], link=`${base}?room=${CLOUD.room}`, out=`${link}#output`;
+  openModal(`<h3>Share this project</h3><p>Anyone with a link can view and change it. Only share it with people you trust.</p>
+  <h4>Editor link (phone or laptop)</h4><input id="lnk1" readonly value="${link}">
+  <h4>Projector link (projector device)</h4><input id="lnk2" readonly value="${out}">
+  <p class="note">On the projector device, open the projector link and click once to fill the screen. Images sync up to a few megabytes. Videos stay on the device they were added on.</p>
+  <div class="btnRow"><button class="btn" id="cpy">Copy editor link</button><button class="primary" data-close>Done</button></div>`);
+  $('#cpy').onclick=()=>{ const done=()=>toast('Link copied'); if(navigator.clipboard) navigator.clipboard.writeText(link).then(done).catch(()=>{ $('#lnk1').select(); toast('Select the link and copy it'); }); else { $('#lnk1').select(); toast('Select the link and copy it'); } };
+}
+
 let IDX=[]; try{ IDX=JSON.parse(lsGet(K_IDX)||'[]'); if(!Array.isArray(IDX)) IDX=[]; }catch(e){ IDX=[]; }
 function loadProject(id){ try{ const r=lsGet(K_P+id); return r?normalize(JSON.parse(r)):null; }catch(e){ return null; } }
 let P=null;
@@ -561,7 +614,7 @@ function persistNow(){
   if(OUT||!P) return; let c=strip(P), ok=lsSet(K_P+P.id,JSON.stringify(c));
   if(!ok){ c.ui.ref=null; c.shapes.forEach(s=>{ if(s.media) s.media={kind:s.media.kind,src:null,name:s.media.name}; }); ok=lsSet(K_P+P.id,JSON.stringify(c)); }
   const e=IDX.find(x=>x.id===P.id); if(e){ e.name=P.name; e.updated=Date.now(); e.count=P.shapes.length; } else IDX.unshift({id:P.id,name:P.name,updated:Date.now(),count:P.shapes.length});
-  lsSet(K_IDX,JSON.stringify(IDX)); lsSet(K_CUR,P.id);
+  lsSet(K_IDX,JSON.stringify(IDX)); lsSet(K_CUR,P.id); cloudSend();
 }
 let saveT=0; function save(){ clearTimeout(saveT); saveT=setTimeout(persistNow,400); touch(); }
 const ser=()=>JSON.stringify(P);
@@ -1273,7 +1326,7 @@ function openOutputMenu(){
 }
 /* ---------- top bar + keys ---------- */
 if(!OUT){
-  $('#undoBtn').onclick=undo; $('#redoBtn').onclick=redo;
+  $('#undoBtn').onclick=undo; $('#redoBtn').onclick=redo; $('#shareBtn').onclick=shareRoom;
   $('#goProj').onclick=openOutputWin; $('#outPill').onclick=openOutputMenu;
   $('#goProj').addEventListener('contextmenu',e=>{ e.preventDefault(); openProj(true); });
   $('#blackBtn').onclick=()=>{ P.blackout=!P.blackout; syncBlack(); commit(); };
@@ -1321,6 +1374,7 @@ if(OUT){
   $('#app').classList.toggle('mode-map',mode==='map'); syncSeg(); resetHist(); refreshAll();
   if(location.hash==='#projection') openProj(false);
 }
+addEventListener('bwcloud',cloudConnect); if(window.BW_FB) cloudConnect();
 requestAnimationFrame(frame);
 })();
 </script>
