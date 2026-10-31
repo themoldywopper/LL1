@@ -570,7 +570,7 @@ function cloudStatus(ok){ const p=document.getElementById('cloudPill'); if(!p) r
 function cloudSend(){
   if(!window.BW_FB||!CLOUD.room||OUT||CLOUD.applying||!P) return;
   const json=JSON.stringify(strip(P)); if(json===CLOUD.lastSent) return; CLOUD.lastSent=json;
-  const F=window.BW_FB; F.set(F.ref(F.db,'rooms/'+CLOUD.room+'/state'),{json,from:CLOUD.dev,t:Date.now()}).catch(()=>cloudStatus(false));
+  const F=window.BW_FB; F.set(F.ref(F.db,'rooms/'+CLOUD.room+'/state'),{json,from:CLOUD.dev,t:Date.now()}).catch(e=>{ cloudStatus(false); toast(cloudErr(e)); });
 }
 function cloudConnect(){
   if(!window.BW_FB||!CLOUD.room) return;
@@ -584,9 +584,10 @@ function cloudConnect(){
       const next=normalize(JSON.parse(v.json)); P=next; CLOUD.lastSent=JSON.stringify(strip(P));
       if(!OUT){ if(!sh()) sel=null; selV=-1; resetHist(); refreshAll(); toast('Updated from another device'); }
     }catch(e){} finally{ CLOUD.applying=false; }
-  },()=>cloudStatus(false));
+  },e=>{ cloudStatus(false); if(!OUT) toast(cloudErr(e)); });
   cloudStatus(true);
 }
+function cloudErr(e){ const t=String((e&&(e.code||e.message))||e||''); if(/permission/i.test(t)) return 'Firebase blocked this (permission denied). In Realtime Database → Rules, allow both "rooms" and "pair", then Publish.'; return 'Could not reach the cloud: '+(t||'unknown error'); }
 function ensureRoom(){
   if(!CLOUD.room){ CLOUD.room=newRoomId(); const u=new URL(location.href); u.searchParams.set('room',CLOUD.room); history.replaceState(null,'',u.toString()); cloudConnect(); cloudSend(); }
   return CLOUD.room;
@@ -596,12 +597,12 @@ function pairStart(){
   const F=window.BW_FB, code=String(1000+Math.floor(Math.random()*9000)), box=$('#pairBox');
   box.hidden=false; $('#pairCode').textContent=code; $('#pairNote').textContent='On your phone: Share → Connect projector, then type this code';
   const r=F.ref(F.db,'pair/'+code);
-  F.set(r,{t:Date.now()}).catch(()=>{ $('#pairNote').textContent='Could not reach the cloud. Check the internet and reopen this page.'; });
+  F.set(r,{t:Date.now()}).catch(e=>{ $('#pairNote').textContent=cloudErr(e); });
   CLOUD.pairOff=F.onValue(F.ref(F.db,'pair/'+code+'/room'),snap=>{
     const v=snap.val(); if(!v) return;
     if(CLOUD.pairOff){ CLOUD.pairOff(); CLOUD.pairOff=null; }
     CLOUD.room=v; box.hidden=true; F.set(r,null).catch(()=>{}); cloudConnect();
-  });
+  },e=>{ $('#pairNote').textContent=cloudErr(e); });
 }
 function onCloudReady(){ if(OUT&&!CLOUD.room){ if(!CLOUD.pairOff&&!window._paired){ window._paired=true; pairStart(); } } else cloudConnect(); }
 /* phone side: type the projector's code */
@@ -621,17 +622,17 @@ function connectProjector(){
       if(Date.now()-(v.t||0)>20*60*1000){ $('#pMsg').textContent='That code has expired. Restart the projector page to get a new one.'; return; }
       await F.set(F.ref(F.db,'pair/'+code+'/room'),room);
       closeModal(); toast('Projector connected');
-    }catch(e){ $('#pMsg').textContent='Could not connect. Check the internet and try again.'; }
+    }catch(e){ $('#pMsg').textContent=cloudErr(e); }
   };
   $('#pGo').onclick=go; i.onkeydown=e=>{ if(e.key==='Enter') go(); };
 }
 function shareRoom(){
   if(!window.BW_FB){ toast('Cloud sync is still loading. Check your connection and try again.'); return; }
   ensureRoom();
-  const base=location.href.split('#')[0].split('?')[0], link=`${base}?room=${CLOUD.room}`, out=`${link}#output`;
+  const base=location.href.split('#')[0].split('?')[0], link=`${base}?room=${CLOUD.room}`, out=`${base}#output`;
   openModal(`<h3>Share this project</h3><p>Anyone with a link can view and change it. Only share it with people you trust.</p>
   <h4>Editor link (phone or laptop)</h4><input id="lnk1" readonly value="${link}">
-  <h4>Projector link (projector device)</h4><input id="lnk2" readonly value="${out}">
+  <h4>Projector link (use this on the projector)</h4><input id="lnk2" readonly value="${out}"><p class="note">Open it on the projector. It shows a 4-digit code. Type that code under Share → Connect projector with code on your phone.</p>
   <p class="note">On the projector device, open the projector link and click once to fill the screen. Images sync up to a few megabytes. Videos stay on the device they were added on.</p>
   <div class="btnRow"><button class="btn" id="pjBtn">Connect projector with code</button><button class="btn" id="cpy">Copy editor link</button><button class="primary" data-close>Done</button></div>`);
   $('#pjBtn').onclick=connectProjector;
