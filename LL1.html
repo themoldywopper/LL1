@@ -569,22 +569,28 @@ function newRoomId(){ const a=new Uint8Array(16); crypto.getRandomValues(a); ret
 function cloudStatus(ok){ const p=document.getElementById('cloudPill'); if(!p) return; p.hidden=!CLOUD.room; p.classList.toggle('on',!!ok); p.querySelector('span').textContent=ok?'Synced':'Offline'; }
 function cloudSend(){
   if(!window.BW_FB||!CLOUD.room||OUT||CLOUD.applying||!P) return;
-  const json=JSON.stringify(strip(P)); if(json===CLOUD.lastSent) return; CLOUD.lastSent=json;
-  const F=window.BW_FB; F.set(F.ref(F.db,'rooms/'+CLOUD.room+'/state'),{json,from:CLOUD.dev,t:Date.now()}).catch(e=>{ cloudStatus(false); toast(cloudErr(e)); });
+  const json=JSON.stringify(strip(P)), key=json+'|'+mode+'|'+sel; if(key===CLOUD.lastSent) return; CLOUD.lastSent=key;
+  const F=window.BW_FB; F.set(F.ref(F.db,'rooms/'+CLOUD.room+'/state'),{json,mode,sel:sel||null,from:CLOUD.dev,t:Date.now()}).catch(e=>{ cloudStatus(false); toast(cloudErr(e)); });
 }
+function cloudOut(ar,size){ if(!OUT||!window.BW_FB||!CLOUD.room) return; const F=window.BW_FB; F.set(F.ref(F.db,'rooms/'+CLOUD.room+'/out'),{ar,size,t:Date.now()}).catch(()=>{}); }
 function cloudConnect(){
   if(!window.BW_FB||!CLOUD.room) return;
   const F=window.BW_FB; if(CLOUD.off) CLOUD.off();
   CLOUD.off=F.onValue(F.ref(F.db,'rooms/'+CLOUD.room+'/state'),snap=>{
     const v=snap.val(); cloudStatus(true);
     if(!v||!v.json){ cloudSend(); return; }
-    if(v.from===CLOUD.dev||v.json===CLOUD.lastSent) return;
+    if(v.from===CLOUD.dev) return;
+    if(OUT){ mode=v.mode==='map'?'map':'play'; sel=v.sel||null; bendMode=false; }
+    if(v.json===CLOUD.lastJson) return;
     CLOUD.applying=true;
     try{
-      const next=normalize(JSON.parse(v.json)); P=next; CLOUD.lastSent=JSON.stringify(strip(P));
-      if(!OUT){ if(!sh()) sel=null; selV=-1; resetHist(); refreshAll(); toast('Updated from another device'); }
+      const next=normalize(JSON.parse(v.json)); P=next; CLOUD.lastJson=v.json; CLOUD.lastSent=JSON.stringify(strip(P))+'|'+mode+'|'+sel;
+      if(!OUT){ if(!sh()) sel=null; selV=-1; resetHist(); refreshAll(); const n=performance.now(); if(n-(CLOUD.lt||0)>4000){ CLOUD.lt=n; toast('Updated from another device'); } }
     }catch(e){} finally{ CLOUD.applying=false; }
   },e=>{ cloudStatus(false); if(!OUT) toast(cloudErr(e)); });
+  if(OUT) sizeProj();
+  else{ if(CLOUD.offOut) CLOUD.offOut(); CLOUD.offOut=F.onValue(F.ref(F.db,'rooms/'+CLOUD.room+'/out'),snap=>{ const v=snap.val(); if(!v||!v.ar) return;
+    if(Math.abs((P.outAR||0)-v.ar)>.002||P.outSize!==v.size){ P.outAR=v.ar; P.outSize=v.size; sizeStage(); save(); toast('Matched the projector: '+v.size); } }); }
   cloudStatus(true);
 }
 function cloudErr(e){ const t=String((e&&(e.code||e.message))||e||''); if(/permission/i.test(t)) return 'Firebase blocked this (permission denied). In Realtime Database → Rules, allow both "rooms" and "pair", then Publish.'; return 'Could not reach the cloud: '+(t||'unknown error'); }
@@ -677,7 +683,7 @@ function syncUndo(){ const u=$('#undoBtn'), r=$('#redoBtn'); if(u){ u.disabled=h
 /* ---------- output window link ---------- */
 let chan=null; try{ chan=new BroadcastChannel('beamwork-output'); }catch(e){}
 let dirty=true, lastPeer=0;
-function touch(){ dirty=true; if(document.hidden&&!OUT) setTimeout(()=>{ if(dirty){ dirty=false; sendState(); } },30); }
+function touch(){ dirty=true; clearTimeout(CLOUD.tt); CLOUD.tt=setTimeout(cloudSend,120); if(document.hidden&&!OUT) setTimeout(()=>{ if(dirty){ dirty=false; sendState(); } },30); }
 function sendState(){ if(!chan||OUT) return; try{ chan.postMessage({t:'state',P:strip(P),mode,sel,bend:bendMode}); }catch(e){} }
 let REMOTE={dim:1,lvl:0};
 if(chan) chan.onmessage=e=>{ const m=e.data||{};
@@ -761,7 +767,7 @@ function mediaEl(s,r){
 }
 function renderFx(s,r,tw,th,dt){
   const st=s.style; if(r.fxName!==st.effect){ r.st={}; r.fxName=st.effect; r.key=null; }
-  const eff=((st.effect==='empty'||st.effect==='none')&&mode==='map')?'mapfill':st.effect;
+  const eff=mode==='map'?'mapfill':st.effect;
   let key=null;
   if(eff==='solid'||eff==='none'||eff==='empty'||eff==='mapfill') key=eff+st.a+tw+'x'+th;
   else if(st.effect==='text'&&st.speed===0) key='t'+st.text+st.a+tw+'x'+th;
@@ -836,7 +842,7 @@ function renderGL(R,F,black,dim,lvl,dimAll){
   const seen=new Set();
   for(const s of P.shapes){ seen.add(s.id); if(!s.visible) continue;
     const st=s.style; if(mode!=='map'&&(st.effect==='none'||st.effect==='empty')) continue;
-    const alpha=shapeAlpha(s,dim,lvl)*(dimAll||1); if(alpha<=0) continue;
+    const alpha=(mode==='map'?1:shapeAlpha(s,dim,lvl))*(dimAll||1); if(alpha<=0) continue;
     const r=rtFor(s), [tw,th,ew,eh]=texSize(s,F);
     const src=renderFx(s,r,tw,th,r.dt||0); const t=upload(R,s.id,src,r.ver);
     gl.uniform1f(L.uAlpha,alpha); gl.uniform1f(L.uFeather,st.feather||0); gl.uniform1f(L.uMask,isQuad(s)?(st.mask==='ellipse'?1:st.mask==='round'?2:0):0);
@@ -936,7 +942,7 @@ function drawStage(){
   const F=stageF(), od=stage.width/SW, dim=dimNow(), lvl=AUD.lvl;
   sctx.setTransform(od,0,0,od,0,0); sctx.globalAlpha=1; sctx.clearRect(0,0,SW,SH);
   const ref=$('#refImg'); if(!ref.hidden){ ref.style.width=F.w+'px'; ref.style.height=F.h+'px'; ref.style.left=F.x+'px'; ref.style.top=F.y+'px'; }
-  if(GS){ if(P.blackout) clearGL(GS,false); else renderGL(GS,F,false,dim,lvl,mode==='map'?.55:1); }
+  if(GS){ if(P.blackout&&mode!=='map') clearGL(GS,false); else renderGL(GS,F,false,dim,lvl,mode==='map'?.45:1); }
   if(view.z!==1){ sctx.strokeStyle='rgba(255,255,255,.25)'; sctx.strokeRect(F.x+.5,F.y+.5,F.w-1,F.h-1); }
   if(P.ui.grid&&mode==='map'){ sctx.save(); sctx.strokeStyle='rgba(255,255,255,.07)'; sctx.lineWidth=1; sctx.beginPath();
     for(let i=1;i<16;i++){ const x=Math.round(F.x+F.w*i/16)+.5; sctx.moveTo(x,F.y); sctx.lineTo(x,F.y+F.h); } for(let j=1;j<9;j++){ const y=Math.round(F.y+F.h*j/9)+.5; sctx.moveTo(F.x,y); sctx.lineTo(F.x+F.w,y); } sctx.stroke(); sctx.restore(); }
@@ -950,11 +956,11 @@ let PW=1,PH=1, wake=null, idleT=0, projOpen=false;
 function sizeProj(){ PW=window.innerWidth; PH=window.innerHeight; const dpr=Math.min(2,window.devicePixelRatio||1);
   pcv.width=Math.round(PW*dpr); pcv.height=Math.round(PH*dpr); projGL.width=Math.round(PW*dpr); projGL.height=Math.round(PH*dpr); if(GP) GP.dpr=dpr;
   if(PW>200&&PH>120){ const na=PW/PH, sz=`${Math.round(PW*dpr)}×${Math.round(PH*dpr)}`;
-    if(OUT){ chan&&chan.postMessage({t:'size',ar:na,size:sz}); }
+    if(OUT){ chan&&chan.postMessage({t:'size',ar:na,size:sz}); cloudOut(na,sz); }
     else if(projOpen&&(Math.abs(na-(P.outAR||0))>.002||P.outSize!==sz)){ P.outAR=na; P.outSize=sz; save(); } } }
 function drawProj(){
   const F=frameOf(PW,PH), dim=OUT?REMOTE.dim:dimNow(), lvl=OUT?REMOTE.lvl:AUD.lvl, od=pcv.width/PW, wire=mode==='map';
-  if(GP){ if(P.blackout) clearGL(GP,true); else renderGL(GP,F,true,dim,lvl,wire?.35:1); }
+  if(GP){ if(P.blackout&&!wire) clearGL(GP,true); else renderGL(GP,F,true,dim,lvl,wire?.45:1); }
   pctx.setTransform(od,0,0,od,0,0); pctx.clearRect(0,0,PW,PH);
   if(!P.blackout&&!wire) drawBorders(pctx,F,dim,lvl);
   if(wire){ drawWire(pctx,F,{labels:false,wall:true}); }
