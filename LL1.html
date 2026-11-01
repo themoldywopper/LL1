@@ -1797,6 +1797,11 @@ function openOutputMenu(){
 /* ---------- camera auto-map ---------- */
 const CAM={stream:null,step:null,photo:null,quad:null,quadAuto:false,cands:[],sugg:[],exact:false,trace:null,drag:-1,fit:null,busy:null,
   ai:{kind:null,state:'idle',pct:0},sam:null,seg:null};
+/* older phones and iPads run out of memory with the big AI model, so they start on the basic one */
+const LOWMEM=(()=>{ try{ const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1), dm=navigator.deviceMemory; return ios||(!!dm&&dm<=4); }catch(e){ return false; } })();
+function aiPref(){ const v=lsGet('beamwork.ai'); return v==='sam'||v==='basic'||v==='hand'?v:(LOWMEM?'basic':'sam'); }
+/* if the page died while an AI model was loading, step down to a lighter picker next time */
+(()=>{ const b=lsGet('beamwork.aiBusy'); if(!b) return; lsDel('beamwork.aiBusy'); lsSet('beamwork.ai',b==='sam'?'basic':'hand'); CAM.crashed=true; })();
 const camWait=ms=>new Promise(r=>setTimeout(r,ms));
 const nextPaint=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
 function setCalib(v){ CLOUD.calib=v; dirty=true; sendState(); cloudSendNow(); }
@@ -1816,13 +1821,14 @@ function loopSimplify(pts,eps){ let fi=0,fd=-1; pts.forEach((q,i)=>{ const d=dis
 /* camera */
 async function camStartStream(){
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) return false;
-  try{ CAM.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
+  try{ CAM.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
     const v=$('#camVid'); v.srcObject=CAM.stream; await v.play().catch(()=>{}); return true; }catch(e){ return false; }
 }
 function camStop(){ if(CAM.stream){ CAM.stream.getTracks().forEach(t=>t.stop()); CAM.stream=null; } }
 function camGrab(){ const v=$('#camVid'), c=document.createElement('canvas'); c.width=v.videoWidth; c.height=v.videoHeight; c.getContext('2d').drawImage(v,0,0); return c; }
-function camOpen(){ CAM.cands=[]; CAM.sugg=[]; CAM.trace=null; $('#cam').hidden=false; camStepCamera(); ensureAI(); }
-function camClose(){ camStop(); if(CLOUD.calib) setCalib(null); $('#cam').hidden=true; CAM.step=null; }
+function camOpen(){ CAM.cands=[]; CAM.sugg=[]; CAM.trace=null; $('#cam').hidden=false; camStepCamera(); }
+function aiFree(){ if(CAM.sam){ CAM.sam.emb=null; CAM.sam.inputs=null; CAM.sam.for=null; } }
+function camClose(){ camStop(); if(CLOUD.calib) setCalib(null); $('#cam').hidden=true; CAM.step=null; aiFree(); CAM.photo=null; }
 
 /* step 1 */
 async function camStepCamera(){
@@ -1841,12 +1847,12 @@ async function camCapture(){
   const b=$('#camShot'); b.disabled=true; b.textContent='Hold still…';
   setCalib('black'); await camWait(1700); const dark=camGrab();
   setCalib('white'); await camWait(1700); const lit=camGrab();
-  setCalib(null); camStop();
-  CAM.photo=lit; CAM.sugg=[]; CAM.quad=detectQuad(dark,lit)||defaultQuad(lit); camStepCorners(CAM.quadAuto);
+  setCalib(null); camStop(); aiFree();
+  CAM.photo=lit; CAM.sugg=[]; CAM.quad=detectQuad(dark,lit)||defaultQuad(lit); dark.width=dark.height=0; camStepCorners(CAM.quadAuto);
 }
 function camUpload(e){
   const f=e.target.files[0]; e.target.value=''; setCalib(null); if(!f) return;
-  const im=new Image(); im.onload=()=>{ const sc=Math.min(1,1920/Math.max(im.width,im.height)), c=document.createElement('canvas'); c.width=Math.round(im.width*sc); c.height=Math.round(im.height*sc);
+  const im=new Image(); im.onload=()=>{ const sc=Math.min(1,1280/Math.max(im.width,im.height)), c=document.createElement('canvas'); c.width=Math.round(im.width*sc); c.height=Math.round(im.height*sc);
     c.getContext('2d').drawImage(im,0,0,c.width,c.height); URL.revokeObjectURL(im.src); camStop(); CAM.photo=c; CAM.sugg=[]; CAM.quad=detectQuad(null,c)||defaultQuad(c); camStepCorners(CAM.quadAuto); };
   im.src=URL.createObjectURL(f);
 }
@@ -1906,6 +1912,8 @@ function camStepCorners(auto){
 async function camStepObjects(){ CAM.step='objects'; $('#camStep').textContent='Step 3 of 3 · Pick objects'; saveRectified(); camBarObjects(); camDraw(); ensureAI(); if(CAM.ai.kind==='sam') await samEncode(); camBarObjects(); }
 function aiMsg(){
   const a=CAM.ai; if(CAM.exact) return 'Exact trace: draw around an object in one stroke.';
+  if(aiPref()==='hand') return (CAM.crashed?'The AI picker crashed this device last time, so it\'s off. ':'')+'Circle each object to trace it by hand.';
+  if(CAM.crashed&&a.state!=='loading') { CAM.crashed=false; toast('The strong AI crashed this device last time, so the basic AI is on.'); }
   if(a.state==='loading') return `Loading the AI picker${a.pct?` · ${a.pct}%`:''}… You can circle objects by hand meanwhile.`;
   if(a.state==='ready'&&a.kind==='sam') return CAM.sam&&CAM.sam.for===CAM.photo?'Tap an object, or loosely circle it. The AI snaps to its edges.':'Preparing the photo for the AI…';
   if(a.state==='ready'&&a.kind==='mp') return 'Tap an object, or circle it. (Basic AI picker.)';
@@ -1918,22 +1926,31 @@ function camBarObjects(){
   $('#camBar').innerHTML=`<span>${aiMsg()}</span><span class="sp"></span>
     ${ready?'<button class="btn" id="camFind">Find objects</button>':''}${CAM.sugg.length?`<button class="btn" id="camAddAll">Add all ${CAM.sugg.length}</button>`:''}
     ${last&&last.opts.length>1?`<button class="btn" id="camSmaller" ${last.oi<=0?'disabled':''}>Smaller</button><button class="btn" id="camBigger" ${last.oi>=last.opts.length-1?'disabled':''}>Bigger</button>`:''}
+    <select class="btn" id="camAI" title="Object picker" style="width:auto;flex:0 0 auto"><option value="sam">Strong AI</option><option value="basic">Basic AI</option><option value="hand">By hand</option></select>
     <button class="tog" id="camExact" aria-pressed="${CAM.exact}">Exact trace</button><button class="btn" id="camUndo" ${n?'':'disabled'}>Undo</button><button class="primary" id="camAdd" ${n?'':'disabled'}>Add ${n||''} shape${n===1?'':'s'}</button>`;
   const f=$('#camFind'); if(f) f.onclick=findObjects;
   const aa=$('#camAddAll'); if(aa) aa.onclick=()=>{ CAM.sugg.forEach(c=>CAM.cands.push({opts:[c],oi:0})); CAM.sugg=[]; camBarObjects(); camDraw(); };
   const sm=$('#camSmaller'), bg=$('#camBigger'); if(sm){ sm.onclick=()=>{ last.oi=Math.max(0,last.oi-1); camBarObjects(); camDraw(); }; bg.onclick=()=>{ last.oi=Math.min(last.opts.length-1,last.oi+1); camBarObjects(); camDraw(); }; }
   $('#camExact').onclick=()=>{ CAM.exact=!CAM.exact; camBarObjects(); };
+  const sel=$('#camAI'); sel.value=aiPref(); sel.onchange=()=>{ if(CAM.ai.state==='loading'){ sel.value=aiPref(); toast('Wait for the AI to finish loading first.'); return; }
+    if(sel.value==='sam'&&LOWMEM&&!confirmSam()) { sel.value=aiPref(); return; }
+    lsSet('beamwork.ai',sel.value); aiFree(); CAM.sam=null; try{ CAM.seg&&CAM.seg.close&&CAM.seg.close(); }catch(e){} CAM.seg=null; CAM.ai={kind:null,state:'idle',pct:0}; ensureAI(); };
   $('#camUndo').onclick=()=>{ CAM.cands.pop(); camBarObjects(); camDraw(); };
   $('#camAdd').onclick=camCommit;
 }
+function confirmSam(){ CAM.samOk=CAM.samOk||window.confirm('The strong AI needs a lot of memory and may crash older phones and iPads. If it does, the app switches back to the basic AI automatically. Try it?'); return CAM.samOk; }
 async function ensureAI(){
-  const a=CAM.ai; if(a.state==='loading'||a.state==='ready') return; a.state='loading'; a.pct=0; camBarObjects();
-  try{ await loadSAM(); a.kind='sam'; a.state='ready'; }
-  catch(e){ console.warn('Segment Anything unavailable',e); try{ await loadMP(); a.kind='mp'; a.state='ready'; }catch(e2){ console.warn('Basic picker unavailable',e2); a.kind=null; a.state='failed'; } }
+  const a=CAM.ai; if(a.state==='loading'||a.state==='ready') return; const pref=aiPref();
+  if(pref==='hand'){ a.kind=null; a.state='failed'; camBarObjects(); return; }
+  a.state='loading'; a.pct=0; camBarObjects();
+  const tryMP=async()=>{ lsSet('beamwork.aiBusy','mp'); try{ await loadMP(); a.kind='mp'; a.state='ready'; }catch(e2){ console.warn('Basic picker unavailable',e2); a.kind=null; a.state='failed'; } lsDel('beamwork.aiBusy'); };
+  if(pref==='sam'){ lsSet('beamwork.aiBusy','sam'); try{ await loadSAM(); a.kind='sam'; a.state='ready'; }catch(e){ console.warn('Segment Anything unavailable',e); lsDel('beamwork.aiBusy'); await tryMP(); } }
+  else await tryMP();
   camBarObjects(); if(CAM.step==='objects'&&a.kind==='sam'){ await samEncode(); camBarObjects(); }
+  lsDel('beamwork.aiBusy');
 }
 async function loadSAM(){
-  const T=await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.14.0'); T.env.allowLocalModels=false;
+  const T=await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.14.0'); T.env.allowLocalModels=false; try{ T.env.backends.onnx.wasm.numThreads=1; T.env.backends.onnx.wasm.proxy=false; }catch(e){}
   const prog=p=>{ if(p&&p.status==='progress'&&p.progress!=null){ const v=Math.round(p.progress); if(Math.abs(v-barPct)>=5){ CAM.ai.pct=v; camBarObjects(); } } };
   const ID='Xenova/slimsam-77-uniform', [model,processor]=await Promise.all([T.SamModel.from_pretrained(ID,{quantized:true,progress_callback:prog}),T.AutoProcessor.from_pretrained(ID)]);
   CAM.sam={T,model,processor,emb:null,inputs:null,for:null};
@@ -1948,7 +1965,7 @@ async function samEncode(){
   CAM.busy='Analyzing the photo…'; camDraw(); await nextPaint();
   try{ const img=await S.T.RawImage.read(c.toDataURL('image/jpeg',.92)); S.inputs=await S.processor(img); S.emb=await S.model.get_image_embeddings(S.inputs); S.for=ph; return true; }
   catch(e){ console.warn('Photo analysis failed',e); CAM.ai.kind=null; CAM.ai.state='failed'; try{ await loadMP(); CAM.ai.kind='mp'; CAM.ai.state='ready'; }catch(e2){} return false; }
-  finally{ CAM.busy=null; camDraw(); }
+  finally{ CAM.busy=null; lsDel('beamwork.aiBusy'); camDraw(); }
 }
 async function samDecode(points){
   const S=CAM.sam, T=S.T, rs=S.inputs.reshaped_input_sizes[0], W=CAM.photo.width, H=CAM.photo.height, flat=[], labels=[];
